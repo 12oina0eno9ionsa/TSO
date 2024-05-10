@@ -1,7 +1,7 @@
 # Documentación respectiva
 > [!IMPORTANT]
 > Falta:
-> - [ ] https://github.com/12oina0eno9ionsa/TSO/issues/1.
+> - [ ] Resolver Issue: Realizar cálculo para contar los vecinos https://github.com/12oina0eno9ionsa/TSO/issues/1.
 ## Memoria Compartida
 ### Clave única para comunicación interproceso
 A través de la inicialización de `key_t key`:
