@@ -5,41 +5,65 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+// Incluido por DRZK
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <curses.h>
 
-int contar_unos(int matriz[5][5], int i, int j,int i_m, int j_m);
-void print_matriz(int matriz[5][5], int i_m, int j_m);
-void Juego_de_la_vida(int matriz[5][5], int i_m, int j_m, int iteraciones);
+#define ROWS 40
+#define COLUMNS 120
+// Incluido por DRZK
 
-int main(){
-    //Partiremos creando una matriz de 5x5 con 1's y 0's aleatorios
-    int i_m = 5; //cantidad de filas
-    int j_m = 5; //cantidad de columnas
+int contar_unos(char *tablero, int i, int j,);
+void print_matriz(char *tablero)
+void Juego_de_la_vida(char *tablero, int iteraciones)
 
-    int i,j,matriz[i_m][j_m];
+int main(int argc, char *argv[]) {
+    // Manejar argumento de entrada N para el número de iteraciones
+    int iteraciones;
+    if (argc != 2) {
+        printf("Se escribio: %s <iteraciones>\n Error :P", argv[0]);
+        exit(EXIT_FAILURE);
+    } else {
+        iteraciones = atoi(argv[1]);
+    }
 
-    //Llenamos la matriz con valores aleatorios
-    for(i=0;i<i_m;i++){
-        for(j=0;j<j_m;j++){
-            matriz[i][j]=rand()%2;
+    // Crear y adjuntar memoria compartida
+    key_t key = ftok(".", 'M');
+    int shmid = shmget(key, sizeof(char) * ROWS * COLUMNS, IPC_CREAT | 0666);
+    char *tablero = (char *)shmat(shmid, NULL, 0);
+
+    // Llenar la matriz en la memoria compartida
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLUMNS; j++) {
+            // Calcular el índice en el bloque de memoria compartida
+            int index = i * COLUMNS + j;
+            // Generar un valor aleatorio de 0 o 1 y asignarlo al elemento de la matriz ubicada en memoria compartida
+            tablero[index] = rand() % 2;
         }
     }
 
-    //Mostramos la matriz
-    print_matriz(matriz,i_m,j_m);
-    
-
-    //Accedemos a los valores que se encuentran alrededor de la matriz
-    /* comprobamos que calcule bien los valores alrededor de la matriz
-    for(i = 0; i<i_m; i++){
-        for(j = 0; j<j_m; j++){
-            printf("Posicion [%d][%d]->[%d]\n",i,j,matriz[i][j]);
-            printf("Cantidad de 1's alrededor: %d\n",contar_unos(matriz,i,j,i_m,j_m));
+    // Crear procesos hijos
+    pid_t pid1, pid2;
+    pid1 = fork();
+    if (pid1 == 0) {
+        Juego_de_la_vida(tablero, iteraciones);
+    } else if (pid1 > 0) {
+        pid2 = fork();
+        if (pid2 == 0) {
+            mostrar_tablero(tablero);
         }
     }
-    */
 
-    
-    Juego_de_la_vida(matriz,i_m,j_m,3);
+    // Esperar a que ambos hijos terminen, si no, o zombie o huerfano (jugador troll de lolcito)
+    wait(NULL);
+    wait(NULL);
+
+    // Liberar memoria compartida
+    shmdt(tablero);
+    shmctl(shmid, IPC_RMID, NULL);
 
     return 0;
 }
@@ -51,29 +75,26 @@ int main(){
     // 3. En cualquier otro caso, muere
     
 // Funciona como debe! ✅💯
-void Juego_de_la_vida(int matriz[5][5], int i_m, int j_m, int iteraciones){
+void Juego_de_la_vida(char *tablero, int iteraciones) {
     int vecinos_vivos = 0;
-    for (int k = 0; k<iteraciones; k++){
-        for(int i = 0; i<i_m; i++){
-            for(int j = 0; j<j_m; j++){
-                //if(matriz[i][j]==0){
-                    vecinos_vivos = contar_unos(matriz,i,j,i_m,j_m);
-                        if(vecinos_vivos==3){ // si hay 3 vecinos Vive
-                        matriz[i][j]=1;
-                    }
-                    else if(vecinos_vivos>3 || vecinos_vivos<2){ // si hay mas de 3 o menos de 2 vecinos Muere
-                        matriz[i][j]=0;
-                    }
-                    // Si no cumple ninguna de las condiciones anteriores, se mantiene igual
 
+    for (int k = 0; k < iteraciones; k++) {
+        // Calcular el nuevo estado del tablero
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                int indice = i * COLUMNS + j; // Calcular el índice correspondiente en el tablero unidimensional
+                vecinos_vivos = contar_unos(tablero, i, j);
+                if (vecinos_vivos == 3) {
+                    tablero[indice] = '1'; // Si hay 3 vecinos, la celda nace
+                }
+                else if (vecinos_vivos < 2 || vecinos_vivos > 3) {
+                    tablero[indice] = '0'; // Si tiene menos de 2 o más de 3 vecinos, muere
+                }
+                //Por tanto si tiene 2 o 3 (exactamente), se mantiene viva, es decir, no se modifica
             }
         }
-        //}
-        print_matriz(matriz,i_m,j_m);
     }
 }
-
-
 
 // Funcion que retorna la cantidad de 1's que hay en la matriz al rededor de la posicion [i][j]
 // @variables i y j son las posiciones de la matriz que se quieren evaluar
@@ -83,7 +104,7 @@ void Juego_de_la_vida(int matriz[5][5], int i_m, int j_m, int iteraciones){
 // y cada caso tiene sus propias condiciones
 
 // 🆗 funciona como debe! 💯✅
-int contar_unos(int matriz[5][5], int i, int j,int i_m, int j_m){ //✅
+int contar_unos(char *tablero, int i, int j){ //✅
     int contador = 0;
     
     if(i==0 & j==0){ // Esquina superior izquierda
@@ -146,14 +167,43 @@ int contar_unos(int matriz[5][5], int i, int j,int i_m, int j_m){ //✅
 }
 
 
-void print_matriz(int matriz[5][5], int i_m, int j_m){
-    int i,j;
-    for(i = 0; i<i_m; i++){
+void print_matriz(char *tablero) {
+    for (int i = 0; i < ROWS; i++) {
         printf("| ");
-        for(j = 0; j<j_m; j++){
-            printf("%d ",matriz[i][j]);
+        for (int j = 0; j < COLUMNS; j++) {
+            int indice = i * COLUMNS + j; // Calcular el índice correspondiente en el tablero
+            printf("%c ", tablero[indice]);
         }
         printf(" |\n");
     }
     printf("---------------\n");
+}
+
+void mostrar_tablero(char *tablero) {
+    initscr(); // Iniciar Ncurses
+    curs_set(0); // Ocultar cursor
+
+    // Bucle para mostrar el tablero
+    while (1) {
+        clear(); // Limpiar la pantalla
+
+        // Recorrer el tablero y mostrar cada celda en la pantalla
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                int indice = i * COLUMNS + j;
+                mvprintw(i, j, "%c", tablero[indice]);
+            }
+        }
+
+        refresh(); // Actualizar pantalla
+
+        // Verificar si el usuario presionó la tecla Escape
+        if (getch() == 27) {
+            break; // Salir del bucle si se presionó la tecla Escape
+        }
+
+        sleep(2); // Retardo para visualización (ajustar según sea necesario)
+    }
+
+    endwin(); // Terminar Ncurses
 }
